@@ -1,0 +1,97 @@
+[
+    {
+        "description": "uplink containing only pulse counter",
+        "type": "uplink",
+        "bytes": "020c",
+        "fPort": 1,
+        "time": "2020-08-02T20:00:00.000+05:00",
+        "data": {
+            "pulseCounter": 12
+        },
+        "points": {
+            "pulseCounter": {
+                "type": "int64",
+                "records": [
+                    {
+                        "eventTime": "2020-08-02T20:00:00.000+05:00",
+                        "value": 12
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "description": "uplink containing three measurements",
+        "type": "uplink",
+        "bytes": "000c44010c44020c",
+        "fPort": 1,
+        "time": "2020-08-02T20:00:00.000+05:00",
+        "data": {
+            "temperature": 31.4,
+            "humidity": 31.4,
+            "pulseCounter": 12
+        },
+        "points": {
+            "temperature": {
+                "unitId": "Cel",
+                "type": "double",
+                "records": [
+                    {
+                        "eventTime": "2020-08-02T20:00:00.000+05:00",
+                        "value": 31.4
+                    }
+                ]
+            },
+            "humidity": {
+                "unitId": "%RH",
+                "type": "double",
+                "records": [
+                    {
+                        "eventTime": "2020-08-02T20:00:00.000+05:00",
+                        "value": 31.4
+                    }
+                ]
+            },
+            "pulseCounter": {
+                "type": "int64",
+                "records": [
+                    {
+                        "eventTime": "2020-08-02T20:00:00.000+05:00",
+                        "value": 12
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "description": "downlink containing only pulseCounterThreshold",
+        "type": "downlink",
+        "bytes": "000a",
+        "fPort": 16,
+        "time": "2020-08-02T20:00:00.000+05:00",
+        "data": {
+            "pulseCounterThreshold": 10
+        }
+    },
+    {
+        "description": "downlink containing only alarm",
+        "type": "downlink",
+        "bytes": "0101",
+        "fPort": 16,
+        "time": "2020-08-02T20:00:00.000+05:00",
+        "data": {
+            "alarm": true
+        }
+    },
+    {
+        "description": "downlink containing alarm and pulseCounterThreshold",
+        "type": "downlink",
+        "bytes": "000a0101",
+        "fPort": 16,
+        "time": "2020-08-02T20:00:00.000+05:00",
+        "data": {
+            "pulseCounterThreshold": 10,
+            "alarm": true
+        }
+    }
+]
