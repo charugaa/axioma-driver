@@ -33,6 +33,12 @@
       "producerId": "axioma",
       "moduleId": "w1",
       "version": "1"
+    },
+    "points": {
+      "volume": {
+        "unitId": "l",
+        "type": "double"
+      }
     }
   },
   "devDependencies": {

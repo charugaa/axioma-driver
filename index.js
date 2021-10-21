@@ -1,124 +1,169 @@
-function readShort(bin) {
-    var result = bin & 0xffff;
-    if (0x8000 & result) {
-        result = -(0x010000 - result);
+
+/**
+ * Parse Device Status
+ * Helper function used by the decodeUplink() function
+ * @param {number} [statusCode] - A byte, tepresenting thhe device status
+ * @returns {Object} The status object
+ */
+
+function parseStatus(statusCode) {
+    let status = {
+        lowBattery:     (0b00000100 & statusCode) !== 0,
+        permanentError: (0b00001000 & statusCode) !== 0,
+        temporaryError: false
     }
-    return result;
+    if ( (0b00010000 & statusCode) !== 0 ) {
+        switch(statusCode >> 5) {
+            case 0b000:
+                status.temporaryError = 'dry';     
+                break;
+            case 0b011:
+                status.temporaryError = 'backflow';     
+                break;
+            case 0b101:
+                status.temporaryError = 'burst';     
+                break;
+            case 0b001:
+                status.temporaryError = 'leakage';     
+                break;
+            case 0b100:
+                status.temporaryError = 'lowTemperature';     
+                break;
+        }
+
+    }
+    return status;
 }
+
+/**
+ * Decode uplink
+ * @param {Object} input - An object provided by the IoT Flow framework
+ * @param {number[]} input.bytes - Array of numbers as it will be sent to the device
+ * @param {number} [input.fPort] - The fPort on which the downlink must be sent
+ * @returns {Object} The decoded object
+ */
 
 function decodeUplink(input) {
-    var result = {};
-    var bytes = input.bytes;
-    if (bytes.length > 8) {
-        throw new Error("Invalid uplink payload: length exceeds 8 bytes");
+
+    const fPort = input.fPort;
+    let bytes = Buffer.from(input.bytes);
+    let length = bytes.length;
+    let result = {};
+
+    if (fPort != 100) {
+        throw new Error("Invalid fPort!");
     }
-    for (i = 0; i < bytes.length; i++) {
-        switch (bytes[i]) {
-            // Temperature - 2 bytes
-            case 0x00:
-                if (bytes.length < i + 3) {
-                    throw new Error("Invalid uplink payload: index out of bounds when reading temperature");
-                }
-                var tmp = (bytes[i + 1] << 8) | bytes[i + 2];
-                tmp = readShort(tmp);
-                result.temperature = tmp / 100;
-                i += 2;
-                break;
-            // Humidity - 2 bytes
-            case 0x01:
-                if (bytes.length < i + 3) {
-                    throw new Error("Invalid uplink payload: index out of bounds when reading humidity");
-                }
-                var tmp = (bytes[i + 1] << 8) | bytes[i + 2];
-                tmp = readShort(tmp);
-                result.humidity = tmp / 100;
-                i += 2;
-                break;
-            // Pulse counter - 1 byte
-            case 0x02:
-                result.pulseCounter = bytes[i + 1];
-                i += 1;
-                break;
-            default:
-                throw new Error("Invalid uplink payload: unknown id '" + bytes[i] + "'");
+
+    if (fPort === 100) {
+
+        const dataInterval = 3600 * 1000;
+
+        const lastLogTimeStamp = 1000 * bytes.readUIntLE(0, 4);
+        const lastLogTime = new Date(lastLogTimeStamp).toISOString();
+
+        const status = parseStatus(bytes[4]);
+        
+        const lastVolume = bytes.readUIntLE(5, 4);
+        
+        const firstLogTimeStamp = 1000 * bytes.readUIntLE(9, 4);
+        // Do we need to round it???
+        // const firstLogTimeStamp = new Date(1000 * bytes.readUIntLE(9, 4)).setMinutes(0, 0, 0)
+
+        const firstLogTime = new Date(firstLogTimeStamp).toISOString();
+        
+        const firstLogVolume = bytes.readUIntLE(13, 4);
+
+
+        let deltaVolume;
+        const deltaVolumes = [];
+        let v = firstLogVolume;
+        let t = firstLogTimeStamp;
+        const volumes = [];
+
+        volumes.push({
+            time: firstLogTime, 
+            volume: firstLogVolume
+        });
+        for (let i=17; i < length; i+=2) {
+            deltaVolume = bytes.readUIntLE(i, 2);
+            deltaVolumes.push(deltaVolume);
+            v += deltaVolume;
+            t += dataInterval;
+            volumes.push({
+                time: new Date(t).toISOString(),
+                volume: v
+            });
+        }
+        volumes.push({
+            time: lastLogTime, 
+            volume: lastVolume
+        });
+
+        result = {
+            status: status,
+            // lastLogTimeStamp: lastLogTimeStamp,
+            lastLogTime: lastLogTime,
+            lastVolume: lastVolume,
+            // logTimeStamp: logTimeStamp,
+            firstLogTime: firstLogTime,
+            firstLogVolume: firstLogVolume,
+            deltaVolumes: deltaVolumes,
+            volumes: volumes
         }
     }
+
     return result;
+
 }
 
-function decodeDownlink(input) {
-    var result = {};
-    var bytes = input.bytes;
-    for (i = 0; i < bytes.length; i += 2) {
-        switch (bytes[i]) {
-            // Pulse counter threshold - 1 byte
-            case 0x00:
-                if (bytes.length < i + 2) {
-                    throw new Error("Invalid downlink payload: index out of bounds when reading pulseCounterThreshold");
-                }
-                result.pulseCounterThreshold = bytes[i + 1];
-                break;
-            // Alarm - 1 byte
-            case 0x01:
-                if (bytes.length < i + 2) {
-                    throw new Error("Invalid downlink payload: index out of bounds when reading alarm");
-                }
-                result.alarm = bytes[i + 1] === 1;
-                break;
-            default:
-                throw new Error("Invalid downlink payload: unknown id '" + bytes[i] + "'");
-        }
-    }
-    return result;
-}
+/**
+ * @typedef {Object} EncodedDownlink
+ * @property {number[]} bytes - Array of numbers as it will be sent to the device
+ * @property {number} fPort - The fPort on which the downlink must be sent
+ */
 
-function encodeDownlink(input) {
-    var result = {};
-    var bytes = [];
-    if (typeof input.pulseCounterThreshold !== "undefined") {
-        if (input.pulseCounterThreshold > 255) {
-            throw new Error("Invalid downlink: pulseCounterThreshold cannot exceed 255");
-        }
-        bytes.push(0x00);
-        bytes.push(input.pulseCounterThreshold);
-    }
-    if (typeof input.alarm !== "undefined") {
-        bytes.push(0x01);
-        if (input.alarm) {
-            bytes.push(0x01);
-        } else {
-            bytes.push(0x00);
-        }
-    }
-    result.bytes = bytes;
-    result.fPort = 16;
-    return result;
-}
+/**
+ * Downlink encode
+ * @param {Object} input - An object provided by the IoT Flow framework
+ * @param {Object} input.message - The higher-level object representing your downlink
+ * @returns {EncodedDownlink} The encoded object
+ */
+function encodeDownlink(input) {}
 
+/**
+ * Downlink decode
+ * @param {Object} input - An object provided by the IoT Flow framework
+ * @param {number[]} input.bytes - Array of numbers as it will be sent to the device
+ * @param {number} [input.fPort] - The fPort on which the downlink must be sent
+ * @returns {Object} The decoded object
+ */
+function decodeDownlink(input) {}
+
+/**
+ * Extract points
+ * @param {Object} input - An object provided by the IoT Flow framework
+ * @param {number[]} input.message - The decoded payload
+ * @param {number} [input.time] - The time of the message
+ * @returns {Object} The extracted points
+ */
 function extractPoints(input) {
-    var result = {};
-    if (typeof input.message.temperature !== "undefined") {
-        result.temperature = {
-            eventTime: input.time,
-            value: input.message.temperature,
-        };
-    }
-    if (typeof input.message.humidity !== "undefined") {
-        result.humidity = {
-            eventTime: input.time,
-            value: input.message.humidity,
-        };
-    }
-    if (typeof input.message.pulseCounter !== "undefined") {
-        result.pulseCounter = {
-            eventTime: input.time,
-            value: input.message.pulseCounter,
-        };
+    let result = {};
+    let elements = input.message.volumes;
+    if (typeof elements !== "undefined") {
+        result.volume = [];
+        elements.forEach(element => {
+            result.volume.push({
+                eventTime: element.time,
+                value: element.volume
+            })
+        });
     }
     return result;
 }
 
-exports.decodeUplink = decodeUplink;
-exports.decodeDownlink = decodeDownlink;
-exports.encodeDownlink = encodeDownlink;
-exports.extractPoints = extractPoints;
+module.exports = {
+    decodeUplink: decodeUplink,
+    decodeDownlink: decodeDownlink,
+    encodeDownlink: encodeDownlink,
+    extractPoints: extractPoints
+}
