@@ -1,6 +1,6 @@
 {
   "name": "axioma-driver",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A simple driver that can decode data sent by Axioma W1 water meters.",
   "main": "index.js",
   "directories": {
